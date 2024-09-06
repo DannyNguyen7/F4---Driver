@@ -1,0 +1,112 @@
+#include <stdint.h>
+#include "main.h"
+#include <string.h>
+unsigned int tick = 0;
+uint32_t* SYST_CR = (uint32_t*) (0xe000e010);
+uint32_t* SYST_RV = (uint32_t*) (0xe000e014);
+//void delay_init(){
+//    // int systick
+//    *SYST_RV = 16000/8 - 1;
+//    *SYST_CR |= 1 | ( 1<< 1);
+//}
+//void delay(unsigned int time){
+//    while ((tick < time))
+// //   *SYST_CR &= ~1;
+//    tick = 0;
+//}
+///*
+//void SysTick_Handler(void){
+//    tick++;
+//    *SYST_CR &= ~(1 << 16);
+//}
+//*/
+
+#define RCC_ADDR_BASE 0X40023800
+#define GPIOD_ADDR_BASE 0x40020c00
+#define GPIOA_ADDR_BASE 0x40020000
+void LED_Init()
+{
+  uint32_t *RCC_AHB1ENR = (uint32_t*) (RCC_ADDR_BASE + 0x30);
+  *RCC_AHB1ENR |= (1 << 3);
+  uint32_t * GPIOD_MODER = (uint32_t*) (GPIOD_ADDR_BASE + 0x00);
+  *GPIOD_MODER |= (0b01 << 24) | (0b01 << 26) | (0b01 << 28) | (0b01 << 30);
+}
+typedef enum{
+    OFF,
+    ON
+}Led_state_t;
+
+void LED_Control(int led_num,Led_state_t state){
+    uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_ADDR_BASE + 0x14);
+    if(state == OFF)
+        *GPIOD_ODR &= ~(1 << (12 + led_num));
+    else
+        *GPIOD_ODR |= (1 << (12 + led_num));
+}
+
+#define GPIOA_BASE_ADDRESS 0x40020000
+#define	GPIOD_BASE_ADDRESS 0x40020C00
+
+void button_init()
+{
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	uint32_t *GPIOA_MODER = (uint32_t*) (GPIOA_BASE_ADDRESS + 0x00);
+	uint32_t *GPIOA_PUPDR = (uint32_t*) (GPIOA_BASE_ADDRESS + 0x0C);
+	*GPIOA_MODER &= ~(0b11);
+	*GPIOA_PUPDR &= ~(0b11);
+}
+char get_button(){
+  uint32_t* GPIOA_IDR = (uint32_t*)(GPIOA_BASE_ADDRESS + 0x10);
+  return *GPIOA_IDR & 0b000001;
+}
+void EXTI0_init(){
+    uint32_t *EXTICR1 = (uint32_t* )0x40013808;
+	*EXTICR1 &= ~(0b1111 << 0);
+	uint32_t *FTSR = (uint32_t*)0x40013c0c;
+	*FTSR |= (1<<0);
+	uint32_t *IMR = (uint32_t*)0x40013c00;
+	*IMR |= (1 << 0);
+	// xu ly trong bo nvic
+	uint32_t *NVIC_ISER0 = (uint32_t*)0xe000e100;
+	*NVIC_ISER0 |= (1 << 6);
+}
+
+void EXTI0_IRQHandler(){
+  __asm("NOP");
+  uint32_t* PR = (uint32_t*)0x40013c14;
+  *PR |= (1 << 0);
+}
+void custom_Handler(){
+    uint32_t* PR = (uint32_t*)0x40013c14;
+    *PR |= (1 << 0);
+}
+
+int main()
+{
+    //delay_init();
+    LED_Init();
+    button_init();
+    EXTI0_init();
+
+    memset((void *)0x20000000, 0, 0x198);
+   uint32_t *VTOR = (uint32_t*) 0xe000ed08;
+   *VTOR = 0x20000000;
+
+   uint32_t *temp = (uint32_t*) 0x20000058;
+   *temp = (uint32_t)custom_Handler | 1;
+
+     while(1){
+
+        LED_Control(1, ON);
+        HAL_Delay(1000);
+        LED_Control(1, OFF);
+        HAL_Delay(1000);
+
+        if(get_button() == 1)
+            LED_Control(0, ON);
+        else
+            LED_Control(0, OFF);
+     }
+     return 0;
+}
+
